@@ -4,6 +4,17 @@ package unqlite
  #include <stdlib.h>
 
  #include "unqlite.h"
+
+ extern int
+ kv_fetch_callback_func(void *data, unsigned int dataLen, void *userData);
+
+ // you cannot export xConsumer directory because a function with a const pointer argument cannot be exported.
+ typedef int (*xConsumer)(const void *pData, unsigned int iDataLen, void *pUserData);
+
+ static inline int
+ _unqlite_kv_fetch_callback(unqlite *pDb, const void *pKey,int nKeyLen, void *pUserData) {
+   return unqlite_kv_fetch_callback(pDb, pKey, nKeyLen, (xConsumer) kv_fetch_callback_func, pUserData);
+ }
 */
 import "C"
 
@@ -91,6 +102,24 @@ func (u *Unqlite) KvFetch(key []byte) ([]byte, error) {
 	}
 
 	return buf, nil
+}
+
+type kvFetchCallbackFunc func([]byte) ErrCode
+
+//export kv_fetch_callback_func
+func kv_fetch_callback_func(data unsafe.Pointer, dataLen C.uint, userData unsafe.Pointer) C.int {
+	f := *(*kvFetchCallbackFunc)(userData)
+	d := C.GoBytes(data, C.int(int(uint(dataLen))))
+	return C.int(f(d))
+}
+
+// TODO: temporary variables might be destroyed by GC?
+func (u *Unqlite) KvFetchCallback(key []byte, f kvFetchCallbackFunc) error {
+	if rc := C._unqlite_kv_fetch_callback(u.db, unsafe.Pointer(&key[0]), C.int(len(key)), unsafe.Pointer(&f)); rc != C.UNQLITE_OK {
+		return ErrCode(rc)
+	}
+
+	return nil
 }
 
 // KvDelete remove a particular record from the database, you can use this high-level thread-safe routine to perform the deletion.

@@ -131,3 +131,31 @@ func TestKvDelete(t *testing.T) {
 		t.Error("Failed to delete a record")
 	}
 }
+
+func TestKvStoreCallback(t *testing.T) {
+	tempFilename := TempFilename()
+	db, err := OpenUnqlite(tempFilename, O_CREATE)
+	if err != nil {
+		t.Fatal("Failed to open database: ", err)
+	}
+	defer os.Remove(tempFilename)
+	defer db.Close()
+
+	k := []byte("k")
+	v := []byte("value")
+
+	if err := db.KvStore(k, v); err != nil {
+		t.Fatal("Failed to store: ", err)
+	}
+
+	f := func(data []byte) ErrCode {
+		if !bytes.Equal(v, data) {
+			t.Error("the Stored value and the value passed for callback function is different")
+		}
+		return OK
+	}
+
+	if err = db.KvFetchCallback(k, f); err != nil {
+		t.Error("An error occured when KvFetchCallback is called: ", err)
+	}
+}
